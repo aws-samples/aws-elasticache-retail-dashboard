@@ -1,0 +1,15 @@
+.DS_Store
+node_modules/
+dist/
+npm-debug.log
+package-lock.json
+.idea/
+#.babelrc
+#.dockerignore
+#.editorconfig
+#.eslintignore
+#.eslintrc.js
+#.postcssrc.js
+packaged.yaml
+timezone.txt
+

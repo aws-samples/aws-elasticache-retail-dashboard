@@ -1,0 +1,17 @@
+{
+  "name": "elasticache-retail-leaderboard-demo-backend",
+  "version": "1.0.0",
+  "description": "Backend for ElastiCache Retail Leaderboard sample",
+  "main": "server.js",
+  "author": "jkahn@",
+  "license": "Apache-2.0",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.16.1",
+    "ioredis": "^3.2.2",
+    "moment": "^2.21.0",
+    "socket.io": "^2.0.4"
+  }
+}

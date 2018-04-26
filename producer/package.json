@@ -1,0 +1,16 @@
+{
+  "name": "elasticache-retail-dashboard-producer",
+  "version": "1.0.0",
+  "description": "Pushes mock orders to a Kinesis Stream",
+  "main": "producer.js",
+  "scripts": {
+    "start": "node producer"
+  },
+  "author": "jkahn@",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "aws-sdk": "^2.221.1",
+    "commander": "^2.15.1",
+    "moment": "^2.22.0"
+  }
+}

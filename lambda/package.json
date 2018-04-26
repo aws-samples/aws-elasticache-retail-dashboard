@@ -1,0 +1,17 @@
+{
+  "name": "elasticache-retail-leaderboard-demo-lambda",
+  "version": "1.0.0",
+  "description": "Processes mock orders and write metrics to Amazon ElastiCache",
+  "main": "index.js",
+  "author": "jkahn@",
+  "license": "Apache-2.0",
+  "scripts": {
+    "install": "find ./node_modules/* -mtime +10950 -exec touch {} \\;"
+  },
+  "dependencies": {
+    "ioredis": "^3.2.2",
+    "moment": "^2.21.0",
+    "npm": "^5.7.1",
+    "zlib": "^1.0.5"
+  }
+}

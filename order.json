@@ -1,0 +1,50 @@
+{
+	"customer": {
+		"email": "bob@notanemail.com",
+		"firstName": "Bob",
+		"lastName": "Jones",
+		"phone": "+1-555-555-1234"
+	},
+	"billingAddress": {
+		"address1": "123 Main St",
+		"address2": "",
+		"city": "Anywhere",
+		"state": "CA",
+		"zipCode": "12345",
+		"firstName": "Bob",
+		"lastName": "Jones",
+		"countryCode": "US"
+	},
+	"shippingAddress": {
+		"address1": "123 Main St",
+		"address2": "",
+		"city": "Anywhere",
+		"state": "CA",
+		"zipCode": "12345",
+		"firstName": "Bob",
+		"lastName": "Jones",
+		"countryCode": "US"
+	},
+	"currency": "USD",
+	"timestamp": 1521825143238,
+	"items": [
+		{
+			"sku": "123456789",
+			"name": "Chocolate Chip Cookie",
+			"price": 2.99,
+			"quantity": 1
+		},
+		{
+			"sku": "123456788",
+			"name": "Peanut Butter Cookie (2-pack)",
+			"price": 5.99,
+			"quantity": 2
+		},
+		{
+			"sku": "123456787",
+			"name": "Deluxe Chocolate Brownie",
+			"price": 6.99,
+			"quantity": 1
+		}
+	]	
+}

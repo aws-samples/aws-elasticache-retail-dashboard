@@ -1,0 +1,525 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: This template creates an ECS cluster and 2 services
+
+Parameters:
+  StackName:
+    Type: String
+    MinLength: 1
+    Description: The name of the cloudformation stack that created the network and elasticache
+  LaunchType:
+    Type: String
+    Default: 'FARGATE'
+    Description: Deploy to EC2 or FARGATE
+    AllowedValues: [EC2, FARGATE]
+Mappings:
+  AWSRegionToAMI:
+    us-east-1:
+      AMIID: ami-eca289fb
+    us-east-2:
+      AMIID: ami-446f3521
+    us-west-1:
+      AMIID: ami-9fadf8ff
+    us-west-2:
+      AMIID: ami-7abc111a
+    eu-west-1:
+      AMIID: ami-a1491ad2
+    eu-central-1:
+      AMIID: ami-54f5303b
+    ap-northeast-1:
+      AMIID: ami-9cd57ffd
+    ap-southeast-1:
+      AMIID: ami-a900a3ca
+    ap-southeast-2:
+      AMIID: ami-5781be34
+  EcsMap:
+    us-east-1:
+      EC2: EC2
+      FARGATE: FARGATE
+    us-east-2:
+      EC2: EC2
+      FARGATE: EC2
+    us-west-1: 
+      EC2: EC2
+      FARGATE: EC2
+    us-west-2:
+      EC2: EC2
+      FARGATE: EC2
+    ca-central-1:
+      EC2: EC2
+      FARGATE: EC2
+    eu-west-1:
+      EC2: EC2
+      FARGATE: EC2
+    eu-west-2:
+      EC2: EC2
+      FARGATE: EC2
+
+Resources:
+  ProcessorFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole    
+  ProcessorRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+          - Effect: Allow
+            Action:
+              - ec2:DescribeNetworkInterfaces
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - kinesis:GetRecords
+              - kinesis:GetShardIterator
+              - kinesis:DescribeStream
+            Resource: !GetAtt KinesisStream.Arn
+          - Effect: Allow
+            Action:
+              - kinesis:ListStreams 
+            Resource: '*'
+      Description: ProcessorFunction lambda role
+      Roles:
+        - !Ref 'ProcessorFunctionRole'
+  ProcessorFunction:
+    Type: 'AWS::Serverless::Function'
+    DependsOn: ProcessorRolePolicy
+    Properties:
+      CodeUri: lambda
+      Handler: index.handler
+      Runtime: nodejs6.10
+      Timeout: 15
+      Role: !GetAtt ProcessorFunctionRole.Arn
+      Description: 'Processes incoming orders, pushes metrics to ElastiCache'
+      VpcConfig:
+        SecurityGroupIds:
+        - Fn::ImportValue:
+              !Sub ${StackName}-LambdaSecurityGroup
+        SubnetIds:
+        - Fn::ImportValue:
+              !Sub ${StackName}-PrivateSubnet1
+        - Fn::ImportValue:
+              !Sub ${StackName}-PrivateSubnet2
+      Environment:
+        Variables:
+          ELASTICACHE_HOST:
+            Fn::ImportValue:
+              !Sub ${StackName}-RedisEndpoint
+          ELASTICACHE_PORT:
+            Fn::ImportValue:
+              !Sub ${StackName}-RedisPort
+          TIMEZONE:
+            Fn::ImportValue:
+              !Sub ${StackName}-DashboardTimezone
+      Events:
+        KinesisStream:
+          Type: Kinesis
+          Properties:
+            Stream: !GetAtt KinesisStream.Arn
+            StartingPosition: LATEST
+
+  KinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub ${AWS::StackName}-stream
+      ShardCount: 1
+      Tags:
+        -
+          Key: Group
+          Value: elasticache-retail-dashboard
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+  ECSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['elasticloadbalancing:DeregisterInstancesFromLoadBalancer', 'elasticloadbalancing:DeregisterTargets',
+              'elasticloadbalancing:Describe*', 'elasticloadbalancing:RegisterInstancesWithLoadBalancer',
+              'elasticloadbalancing:RegisterTargets', 'ec2:Describe*', 'ec2:AuthorizeSecurityGroupIngress']
+            Resource: '*'
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: '*'
+  ECSALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: '30'
+      Subnets: 
+        - Fn::ImportValue: 
+            !Sub "${StackName}-PublicSubnet1"
+        - Fn::ImportValue: 
+            !Sub "${StackName}-PublicSubnet2"
+      SecurityGroups: 
+        - Fn::ImportValue: 
+            !Sub "${StackName}-ALBSecurityGroup"
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn: ECSServiceRole
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref 'ECSTG'
+      LoadBalancerArn: !Ref 'ECSALB'
+      Port: '80'
+      Protocol: HTTP
+  ECSALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    DependsOn: ALBListener
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref 'ECSTG'
+      Conditions:
+      - Field: path-pattern
+        Values: [/]
+      ListenerArn: !Ref 'ALBListener'
+      Priority: 2
+  ECSTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: ECSALB
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      TargetGroupAttributes:
+      - Key: stickiness.enabled
+        Value: 'true'
+      VpcId: 
+         Fn::ImportValue: 
+          !Sub "${StackName}-VPCId"
+      TargetType: ip
+  ECSALBBackendListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    DependsOn: ALBListener
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref 'BackendECSTG'
+      Conditions:
+      - Field: path-pattern
+        Values: [/socket*]
+      ListenerArn: !Ref 'ALBListener'
+      Priority: 1
+  BackendECSTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: ECSALB
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      TargetGroupAttributes:
+      - Key: stickiness.enabled
+        Value: 'true'
+      VpcId: 
+         Fn::ImportValue: 
+          !Sub "${StackName}-VPCId"
+      TargetType: ip
+  CloudwatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub ECSLogGroup-${AWS::StackName}
+      RetentionInDays: 14
+  taskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: 
+      - EcsInstance
+    Properties:
+      Family: !Sub ${AWS::StackName}-ecs-backend
+      RequiresCompatibilities: 
+        - FARGATE
+        - EC2
+      NetworkMode: awsvpc
+      Cpu: 256
+      Memory: 1GB
+      ExecutionRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+      - Name: backend
+        Cpu: '10'
+        Essential: 'true'
+        Image: 
+          Fn::ImportValue:
+            !Sub ${StackName}-EcrBackendRepositoryUri
+        Memory: '1024'
+        Environment:
+        - Name: ELASTICACHE_HOST
+          Value: 
+            Fn::ImportValue:
+              !Sub "${StackName}-RedisEndpoint" 
+        - Name: ELASTICACHE_PORT
+          Value: 
+            Fn::ImportValue:
+              !Sub "${StackName}-RedisPort"
+        - Name: TIMEZONE
+          Value:
+            Fn::ImportValue:
+              !Sub "${StackName}-DashboardTimezone"
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref 'CloudwatchLogsGroup'
+            awslogs-region: !Ref 'AWS::Region'
+            awslogs-stream-prefix: ecs-demo-app
+        PortMappings:
+        - ContainerPort: 8080
+  dashboardTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: 
+      - EcsInstance
+    Properties:
+      Family: !Sub ${AWS::StackName}-ecs-dashboard
+      RequiresCompatibilities: 
+        - FARGATE
+        - EC2
+      NetworkMode: awsvpc
+      Cpu: 256
+      Memory: 1GB
+      ExecutionRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+      - Name: dashboard
+        Cpu: '10'
+        Essential: 'true'
+        Image: 
+          Fn::ImportValue:
+            !Sub ${StackName}-EcrDashboardRepositoryUri
+        Memory: '1024'
+        Environment:
+        - Name: ELASTICACHE_HOST
+          Value: 
+            Fn::ImportValue:
+              !Sub "${StackName}-RedisEndpoint"
+        - Name: ELASTICACHE_PORT
+          Value: 
+            Fn::ImportValue:
+              !Sub "${StackName}-RedisPort"
+        - Name: TIMEZONE
+          Value:
+            Fn::ImportValue:
+              !Sub "${StackName}-DashboardTimezone"
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref 'CloudwatchLogsGroup'
+            awslogs-region: !Ref 'AWS::Region'
+            awslogs-stream-prefix: ecs-demo-app
+        PortMappings:
+        - ContainerPort: 80
+  service:
+    Type: AWS::ECS::Service
+    DependsOn: 
+      - ALBListener
+      - ECSALBListenerRule
+      - EcsInstance
+    Properties:
+      Cluster: !Ref 'ECSCluster'
+      DesiredCount: '1'
+      LaunchType: !FindInMap [EcsMap, !Ref 'AWS::Region', !Ref LaunchType] 
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups: 
+          - Fn::ImportValue:
+              !Sub "${StackName}-EcsSecurityGroup"
+          Subnets: 
+          - Fn::ImportValue:
+              !Sub "${StackName}-PrivateSubnet1"
+          - Fn::ImportValue: 
+              !Sub "${StackName}-PrivateSubnet2"
+      LoadBalancers:
+      - ContainerName: dashboard
+        ContainerPort: '80'
+        TargetGroupArn: !Ref 'ECSTG'
+      TaskDefinition: !Ref 'dashboardTaskDefinition'
+  backendservice:
+    Type: AWS::ECS::Service
+    DependsOn: 
+      - ALBListener
+      - ECSALBBackendListenerRule
+      - EcsInstance
+    Properties:
+      Cluster: !Ref 'ECSCluster'
+      DesiredCount: '1'
+      LaunchType: !FindInMap [EcsMap, !Ref 'AWS::Region', !Ref LaunchType] 
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups: 
+          - Fn::ImportValue:
+              !Sub "${StackName}-EcsSecurityGroup"
+          Subnets: 
+          - Fn::ImportValue:
+              !Sub "${StackName}-PrivateSubnet1"
+          - Fn::ImportValue: 
+              !Sub "${StackName}-PrivateSubnet2"
+      LoadBalancers:
+      - ContainerName: backend
+        ContainerPort: '8080'
+        TargetGroupArn: !Ref 'BackendECSTG'
+      TaskDefinition: !Ref 'taskdefinition'
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: 
+         Fn::ImportValue: 
+          !Sub "${StackName}-VPCId"
+  EcsSecurityGroupSSHinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '22'
+      ToPort: '22'
+      CidrIp: 0.0.0.0/0
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action: ['ecs:CreateCluster', 'ecs:DeregisterContainerInstance', 'ecs:DiscoverPollEndpoint',
+              'ecs:Poll', 'ecs:RegisterContainerInstance', 'ecs:StartTelemetrySession',
+              'ecs:Submit*', 'logs:CreateLogStream', 'logs:PutLogEvents']
+            Resource: '*'
+  
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [!Ref 'EC2Role']
+  EcsInstance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: ECS Cluster
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              git: []
+          files:
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main] 
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+              mode: '000400'
+              owner: root
+              group: root
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: Sub !
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EcsInstance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EcsInstance --region ${AWS::Region}
+                runas=root
+              mode: '000400'
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+    Properties:
+      ImageId: !FindInMap [AWSRegionToAMI, !Ref 'AWS::Region', AMIID]
+      InstanceType: t2.medium
+      IamInstanceProfile: !Ref 'EC2InstanceProfile'
+      KeyName: 
+        Fn::ImportValue:
+          !Sub "${StackName}-KeyName"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EcsInstance --region ${AWS::Region}
+      NetworkInterfaces:
+        - GroupSet:
+            - !Ref 'EcsSecurityGroup'
+          AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'
+          DeleteOnTermination: 'true'
+          SubnetId: 
+            Fn::ImportValue:
+              !Sub ${StackName}-PublicSubnet1
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+Outputs:
+  AppUrl:
+    Description: Application Endpoint
+    Value: !GetAtt ECSALB.DNSName      
+  KinesisStream:
+    Description: The arn of the kinesis data stream
+    Value: !Ref KinesisStream
