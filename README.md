@@ -60,7 +60,7 @@ Windows: [Click here](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/putty.
 Once you create the ssh connection login to ECR with the following command:
 
 ``` bash
-$(aws ecr get-login --no-include-email)
+$ $(aws ecr get-login --no-include-email)
 ```
 
 
