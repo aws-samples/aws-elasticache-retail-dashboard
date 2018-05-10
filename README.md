@@ -57,10 +57,16 @@ ssh -i <Path/To/KeyFile.pem> ec2-user@<HostIP From Cloudformation output>
 
 Windows: [Click here](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/putty.html) for detailed instructions.
 
+Copy the source code:
+```
+$ aws s3 sync s3://elasticache-retail-dashboard/code /home/ec2-user/lab  
+```
+
+
 Once you create the ssh connection login to ECR with the following command:
 
 ``` bash
-$(aws ecr get-login --no-include-email)
+$ $(aws ecr get-login --no-include-email)
 ```
 
 
