@@ -2,7 +2,7 @@
 
 Most often, when we discuss Amazon ElastiCache, it is in the context of enhancing the performance of read-heavy database workloads. We update our application to employ a read-through or write-through pattern to keep data in the cache fresh and ease the burden on the database. ElastiCache though can deliver a great number of other benefits that not only make your workload more performant, but also deliver new capabilities.
 
-To demonstrate some of those benefits, we will build a sample sales analytics dashboard using [Amazon ElastiCache](https://aws.amazon.com/elasticache/) as well as several other AWS services. More details on the ElastiCache features used here can be found in the accompanying [blog post](insert link).
+To demonstrate some of those benefits, we will build a sample sales analytics dashboard using [Amazon ElastiCache](https://aws.amazon.com/elasticache/) as well as several other AWS services. More details on the ElastiCache features used here can be found in the accompanying [blog post](https://aws.amazon.com/blogs/database/).
 
 ## Getting Started
 
