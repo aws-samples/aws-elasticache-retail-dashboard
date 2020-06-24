@@ -103,7 +103,7 @@ Resources:
     Properties:
       CodeUri: lambda
       Handler: index.handler
-      Runtime: nodejs6.10
+      Runtime: nodejs10.x
       Timeout: 15
       Role: !GetAtt ProcessorFunctionRole.Arn
       Description: 'Processes incoming orders, pushes metrics to ElastiCache'
