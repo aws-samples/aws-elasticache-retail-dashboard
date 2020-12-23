@@ -11,7 +11,7 @@
     "build": "node build/build.js"
   },
   "dependencies": {
-    "buefy": "^0.6.3",
+    "buefy": "^0.9.2",
     "chart.js": "^2.7.2",
     "moment": "^2.21.0",
     "socket.io-client": "^2.0.4",
